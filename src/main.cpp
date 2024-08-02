@@ -5,11 +5,14 @@
 #include <BLE2902.h>
 #include <ArduinoJson.h>
 #include <Update.h>
-
-#define LED_PIN 4 
+#include <WiFi.h>
+#include <Preferences.h> 
+#define LED 2
 
 BLEServer *pServer;
-BLECharacteristic *FuelTank_Characteristic;
+
+// First service characteristics
+BLECharacteristic *Wifi_Characteristic;
 BLECharacteristic *TotalDistance_Characteristic;
 BLECharacteristic *TotalHours_Characteristic;
 BLECharacteristic *CoolantTemp_Characteristic;
@@ -17,25 +20,53 @@ BLECharacteristic *RPM_Characteristic;
 BLECharacteristic *BrakePP_Characteristic;
 BLECharacteristic *AccPP_Characteristic;
 BLECharacteristic *CAN10_Characteristic;
+BLECharacteristic *VAL_1;
+BLECharacteristic *VAL_2;
+
+// Second service characteristics
+BLECharacteristic *VAL_3;
+BLECharacteristic *VAL_4;
+BLECharacteristic *VAL_5;
+BLECharacteristic *VAL_6;
+BLECharacteristic *VAL_7;
+BLECharacteristic *VAL_8;
+BLECharacteristic *VAL_9;
+BLECharacteristic *VAL_10;
+BLECharacteristic *VAL_11;
+BLECharacteristic *VAL_12;
 
 bool deviceConnected = false;
 
+Preferences preferences;
 
-#define SERVICE_UUID "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+  #define SERVICE_UUID "49ba1c81-155f-4799-a0fb-5d583a5586a5"
+  #define SERVICE2_UUID "49ba1c81-155f-4799-a0fb-5d583a5586a5"
+  #define SERVICE3_UUID "49ba1c81-155f-4799-a0fb-5d583a5586a5"
 
+  #define VALUE_WIFI  "7ce9fd0d-cf46-4838-b39c-9447f6f80256"
+  #define VALUE_TotalDistance  "52cd15c8-b8f8-4237-a626-cbb26992fec4"
+  #define VALUE_TotalHours  "541db2a4-902d-4a53-8f8c-0272720e783c"
+  #define VALUE_CoolantTemp  "580e3783-724f-41a0-ba29-f13e690b3d87"
+  #define VALUE_RPM  "b6d08758-c74a-41be-aad3-7df0e9e5b6ff"
+  #define VALUE_BrakePP  "b3923f32-214d-4a34-98ed-b095bc920cb7"
+  #define VALUE_AccPP  "c0051ae2-4589-4764-a4fd-26a423df67c8"
+  #define VALUE_CAN10  "00ec89b6-91a8-4deb-9454-00129fb7e9d5"
 
+  #define VALUE_VAL1  "3c289f2b-c171-4bb1-8a9b-e63f46e8fc47"
+  #define VALUE_VAL2  "d9e3e9a0-5791-44e4-9b62-6bcd729bb7ea"
+  #define VALUE_VAL3  "ba9fb2a1-6ff2-4e95-bf1f-9c3ae76e58d4"
+  #define VALUE_VAL4  "e68e1b45-4b74-4912-8ddc-9d092e582e32"
+  #define VALUE_VAL5  "26a31b32-8159-42c9-87b3-526cb621ab1e"
+  #define VALUE_VAL6  "09ef9cb7-d7cb-4b2e-9407-5ebd95b7d671"
+  #define VALUE_VAL7  "c7a97d2c-5075-4d85-9638-77c1e8f6ab58"
+  #define VALUE_VAL8  "1bc1cf34-569d-49b0-9158-908b46d5a2f8"
+  #define VALUE_VAL9  "b9f103c1-08b7-493e-8034-c5086f79385d"
+  #define VALUE_VAL10 "c1fb647d-d07e-44ad-8969-99d3b62636de"
+  #define VALUE_VAL11 "9a9dc5b3-82ad-4530-859f-e5e0f3512891"
+  #define VALUE_VAL12 "5b80f39e-8b27-4603-9c9e-2145a4f9d351"
 
-#define VALUE_FuelTank  "7ce9fd0d-cf46-4838-b39c-9447f6f80256"
-#define VALUE_TotalDistance  "52cd15c8-b8f8-4237-a626-cbb26992fec4"
-#define VALUE_TotalHours  "541db2a4-902d-4a53-8f8c-0272720e783c"
-#define VALUE_CoolantTemp  "580e3783-724f-41a0-ba29-f13e690b3d87"
-#define VALUE_RPM  "b6d08758-c74a-41be-aad3-7df0e9e5b6ff"
-#define VALUE_BrakePP  "b3923f32-214d-4a34-98ed-b095bc920cb7"
-#define VALUE_AccPP  "c0051ae2-4589-4764-a4fd-26a423df67c8"
-#define VALUE_CAN10  "00ec89b6-91a8-4deb-9454-00129fb7e9d5"
-
-const size_t bufferSize = JSON_OBJECT_SIZE(6);
-
+const size_t bufferSize = JSON_OBJECT_SIZE(10);
+void connectToWiFi(const char* ssid, const char* password);
 class MyServerCallbacks : public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
       deviceConnected = true;
@@ -48,35 +79,127 @@ class MyServerCallbacks : public BLEServerCallbacks {
       BLEDevice::startAdvertising(); 
     }
 };
+String status = "Null";
+class CustomCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic* pCharacteristic) {
+    std::string value = pCharacteristic->getValue();
+    
+    if (value.length() > 0) {
+      Serial.println("Received data:");
+      for (int i = 0; i < value.length(); i++) {
+        Serial.print(value[i]);
+      }
+      Serial.println();
+
+      digitalWrite(LED,HIGH);
+      delay(100);
+      digitalWrite(LED,LOW);
+
+      StaticJsonDocument<200> doc;
+      DeserializationError error = deserializeJson(doc, value);
+      if (error) {
+        Serial.print("deserializeJson() failed: ");
+        Serial.println(error.c_str());
+        return;
+      }
+
+      const char* ssid = doc["ssid"];
+      const char* password = doc["password"];
+      Serial.print("SSID: ");
+      Serial.println(ssid);
+      Serial.print("Password: ");
+      Serial.println(password);
+
+      connectToWiFi(ssid, password);
 
 
+    }
+  }
+};
+
+  void connectToWiFi(const char* ssid, const char* password) {
+    Serial.println("Connecting to WiFi...");
+    WiFi.begin(ssid, password);
+
+    int maxRetries = 30;
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED && retries < maxRetries) {
+      delay(500);
+      Serial.print(".");
+      retries++;
+    }
+
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      
+      preferences.begin("wifiCreds", false);
+      preferences.putString("ssid", ssid);
+      preferences.putString("password", password);
+      preferences.end();
+      status = "Connected";
+      Serial.println("Connected");
+    
+    } else {
+      Serial.println("Failed to connect to WiFi.");
+      status = "Failed";
+    }
+
+    
+  }
+
+
+  void connectToWiFiStartup(const char* ssid, const char* password) {
+    Serial.println("Connecting to WiFi...");
+    WiFi.begin(ssid, password);
+
+    int maxRetries = 30;
+    int retries = 0;
+    while (WiFi.status() != WL_CONNECTED && retries < maxRetries) {
+      delay(500);
+      Serial.print(".");
+      retries++;
+    }
+
+    
+    if (WiFi.status() == WL_CONNECTED) {
+    
+       Serial.println("Connected");
+    
+    } else {
+      Serial.println("Failed to connect to WiFi.");
+      status = "Failed";
+    }
+
+  }
 
 
 void setup() {
-  // pinMode(LED_PIN, OUTPUT);
-  // digitalWrite(LED_PIN, LOW);
+  pinMode(LED,OUTPUT);
 
-  // Serial.begin(115200);
-  // Serial.println("Start blinky");
+  Serial.begin(115200);
 
-    Serial.begin(115200);
+    
 
-  BLEDevice::init("ESP32-CAM");
+
+
+
+  Serial.println("Start BLE");
+
+  BLEDevice::init("350123451234560");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
 
-
   BLEService *pService = pServer->createService(BLEUUID(SERVICE_UUID), 30, 0);
-  FuelTank_Characteristic = pService->createCharacteristic(
-                      VALUE_FuelTank,
+
+  Wifi_Characteristic = pService->createCharacteristic(
+                      VALUE_WIFI,
                       BLECharacteristic::PROPERTY_READ |
                       BLECharacteristic::PROPERTY_WRITE |
                       BLECharacteristic::PROPERTY_NOTIFY |
                       BLECharacteristic::PROPERTY_INDICATE
                     );
-
-  FuelTank_Characteristic->addDescriptor(new BLE2902());
-
+  Wifi_Characteristic->addDescriptor(new BLE2902());
+  Wifi_Characteristic->setCallbacks(new CustomCharacteristicCallbacks());
 
   TotalDistance_Characteristic = pService->createCharacteristic(
                       VALUE_TotalDistance,
@@ -85,7 +208,6 @@ void setup() {
                       BLECharacteristic::PROPERTY_NOTIFY |
                       BLECharacteristic::PROPERTY_INDICATE
                     );
-
   TotalDistance_Characteristic->addDescriptor(new BLE2902());
 
   TotalHours_Characteristic = pService->createCharacteristic(
@@ -95,407 +217,320 @@ void setup() {
                       BLECharacteristic::PROPERTY_NOTIFY |
                       BLECharacteristic::PROPERTY_INDICATE
                     );
-
   TotalHours_Characteristic->addDescriptor(new BLE2902());
 
+  CoolantTemp_Characteristic = pService->createCharacteristic(
+                      VALUE_CoolantTemp,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  CoolantTemp_Characteristic->addDescriptor(new BLE2902());
 
-    CoolantTemp_Characteristic = pService->createCharacteristic(
-        VALUE_CoolantTemp,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+  RPM_Characteristic = pService->createCharacteristic(
+                      VALUE_RPM,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  RPM_Characteristic->addDescriptor(new BLE2902());
 
-    CoolantTemp_Characteristic->addDescriptor(new BLE2902());
+  BrakePP_Characteristic = pService->createCharacteristic(
+                      VALUE_BrakePP,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  BrakePP_Characteristic->addDescriptor(new BLE2902());
 
-    RPM_Characteristic = pService->createCharacteristic(
-        VALUE_RPM,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+  AccPP_Characteristic = pService->createCharacteristic(
+                      VALUE_AccPP,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  AccPP_Characteristic->addDescriptor(new BLE2902());
 
-    RPM_Characteristic->addDescriptor(new BLE2902());
+  CAN10_Characteristic = pService->createCharacteristic(
+                      VALUE_CAN10,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  CAN10_Characteristic->addDescriptor(new BLE2902());
 
-    BrakePP_Characteristic = pService->createCharacteristic(
-        VALUE_BrakePP,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+  VAL_1 = pService->createCharacteristic(
+                      VALUE_VAL1,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_1->addDescriptor(new BLE2902());
 
-    BrakePP_Characteristic->addDescriptor(new BLE2902());
+  VAL_2 = pService->createCharacteristic(
+                      VALUE_VAL2,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_2->addDescriptor(new BLE2902());
 
-    AccPP_Characteristic = pService->createCharacteristic(
-        VALUE_AccPP,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+  pService->start();
 
-    AccPP_Characteristic->addDescriptor(new BLE2902());
+  BLEService *pService2 = pServer->createService(BLEUUID(SERVICE2_UUID), 30, 0);
+  VAL_1 = pService2->createCharacteristic(
+                      VALUE_VAL1,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_1->addDescriptor(new BLE2902());
 
-    CAN10_Characteristic = pService->createCharacteristic(
-        VALUE_CAN10,
-        BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_WRITE |
-        BLECharacteristic::PROPERTY_NOTIFY |
-        BLECharacteristic::PROPERTY_INDICATE
-    );
+  VAL_2 = pService2->createCharacteristic(
+                      VALUE_VAL2,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_2->addDescriptor(new BLE2902());
 
-    CAN10_Characteristic->addDescriptor(new BLE2902());
 
-     pService->start();
+  VAL_3 = pService2->createCharacteristic(
+                      VALUE_VAL3,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );  
+  VAL_3->addDescriptor(new BLE2902());
+
+  VAL_4 = pService2->createCharacteristic(
+                      VALUE_VAL4,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_4->addDescriptor(new BLE2902());
+
+  VAL_5 = pService2->createCharacteristic(
+                      VALUE_VAL5,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_5->addDescriptor(new BLE2902());
+
+  VAL_6 = pService2->createCharacteristic(
+                      VALUE_VAL6,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_6->addDescriptor(new BLE2902());
+
+  VAL_7 = pService2->createCharacteristic(
+                      VALUE_VAL7,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_7->addDescriptor(new BLE2902());
+
+  VAL_8 = pService2->createCharacteristic(
+                      VALUE_VAL8,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_8->addDescriptor(new BLE2902());
+  pService2->start();
+
+  BLEService *pService3 = pServer->createService(BLEUUID(SERVICE3_UUID), 30, 0);
+
+
+  VAL_9 = pService3->createCharacteristic(
+                      VALUE_VAL9,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_9->addDescriptor(new BLE2902());
+
+  VAL_10 = pService3->createCharacteristic(
+                      VALUE_VAL10,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_10->addDescriptor(new BLE2902());
+
+  VAL_11 = pService3->createCharacteristic(
+                      VALUE_VAL11,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_11->addDescriptor(new BLE2902());
+
+  VAL_12 = pService3->createCharacteristic(
+                      VALUE_VAL12,
+                      BLECharacteristic::PROPERTY_READ |
+                      BLECharacteristic::PROPERTY_WRITE |
+                      BLECharacteristic::PROPERTY_NOTIFY |
+                      BLECharacteristic::PROPERTY_INDICATE
+                    );
+  VAL_12->addDescriptor(new BLE2902());
+
+ pService3->start();
 
   pServer->getAdvertising()->start();
   Serial.println("Waiting for a client connection to notify...");
+
+
+
+  preferences.begin("wifiCreds", true);
+  String ssid = preferences.getString("ssid", "");
+  String password = preferences.getString("password", "");
+  preferences.end();
+
+  
+  if (ssid.length() > 0 && password.length() > 0) {
+      connectToWiFiStartup(ssid.c_str(), password.c_str());
+      Serial.print("SSID: ");
+      Serial.println(ssid);
+      Serial.print("Password: ");
+      Serial.println(password);
+
+     
+  } else {
+    Serial.println("No saved WiFi credentials");
+  }
+
+  // if (!psramInit()) {
+  //   Serial.println("PSRAM init failed");
+  //   return;
+  // }
 
 
 }
 
 void loop() {
   if (deviceConnected) {
-    StaticJsonDocument<bufferSize> jsonDoc3;
-    StaticJsonDocument<bufferSize> jsonDoc4;
-    StaticJsonDocument<bufferSize> jsonDoc5;
-    StaticJsonDocument<bufferSize> jsonDoc6;
-    StaticJsonDocument<bufferSize> jsonDoc7;
-    StaticJsonDocument<bufferSize> jsonDoc8;
-    StaticJsonDocument<bufferSize> jsonDoc9;
-    StaticJsonDocument<bufferSize> jsonDoc10;
+    StaticJsonDocument<bufferSize> jsonDoc1, jsonDoc2, jsonDoc3, jsonDoc4, jsonDoc5;
+    StaticJsonDocument<bufferSize> jsonDoc6, jsonDoc7, jsonDoc8, jsonDoc9, jsonDoc10, jsonDoc11, jsonDoc12;
+    StaticJsonDocument<bufferSize> jsonDoc13, jsonDoc14, jsonDoc15, jsonDoc16, jsonDoc17, jsonDoc18;
+    StaticJsonDocument<bufferSize> jsonDoc19, jsonDoc20, jsonDoc21, jsonDoc22, jsonDoc23, jsonDoc24;
+
+    jsonDoc1["FTank"] = random(0, 101);
+    jsonDoc2["TDistance"] = random(0, 101);
+    jsonDoc3["THours"] = random(0, 101);
+    jsonDoc4["CTemp"] = random(0, 101);
+    jsonDoc5["RPM"] = random(0, 101);
+    jsonDoc6["BrakePP"] = random(0, 101);
+    jsonDoc7["AccPP"] = random(0, 101);
+    jsonDoc8["CAN10"] = random(0, 101);
+    jsonDoc9["VAL1"] = random(0, 101);
+    jsonDoc10["VAL2"] = random(0, 101);
+    jsonDoc11["VAL3"] = random(0, 101);
+    jsonDoc12["VAL4"] = random(0, 101);
+    jsonDoc13["VAL5"] = random(0, 101);
+    jsonDoc14["VAL6"] = random(0, 101);
+    jsonDoc15["VAL7"] = random(0, 101);
+    jsonDoc16["VAL8"] = random(0, 101);
+    jsonDoc17["VAL9"] = random(0, 101);
+    jsonDoc18["VAL10"] = random(0, 101);
+    jsonDoc19["VAL11"] = random(0, 101);
+    jsonDoc20["VAL12"] = random(0, 101);
 
 
     
-    jsonDoc3["FTank"] = random(0, 101);
-    jsonDoc4["TDistance"] = random(0, 101);
-    jsonDoc5["THours"] = random(0, 101);
-    jsonDoc6["CTemp"] = random(0, 101);
+    // Wifi_Characteristic->setValue(jsonDoc1.as<String>().c_str());
+    // Wifi_Characteristic->notify();
 
-    jsonDoc7["RPM"] = random(0, 101);
-    jsonDoc8["BrakePP"] = random(0, 101);
-    jsonDoc9["AccPP"] = random(0, 101);
-    jsonDoc10["CAN10"] = random(0, 101);
+  
+    Wifi_Characteristic->setValue(status.c_str());
+    Wifi_Characteristic->notify();
 
 
 
 
+    TotalDistance_Characteristic->setValue(jsonDoc2.as<String>().c_str());
+    TotalDistance_Characteristic->notify();
 
-        String jsonString3;
-        serializeJson(jsonDoc3, jsonString3);
-        Serial.println(jsonString3);
-        FuelTank_Characteristic->setValue(jsonString3.c_str());
-        FuelTank_Characteristic->notify();
+    TotalHours_Characteristic->setValue(jsonDoc3.as<String>().c_str());
+    TotalHours_Characteristic->notify();
 
-        String jsonString4;
-        serializeJson(jsonDoc4, jsonString4);
-        Serial.println(jsonString4);
-        TotalDistance_Characteristic->setValue(jsonString4.c_str());
-        TotalDistance_Characteristic->notify();
+    CoolantTemp_Characteristic->setValue(jsonDoc4.as<String>().c_str());
+    CoolantTemp_Characteristic->notify();
 
-        String jsonString5;
-        serializeJson(jsonDoc5, jsonString5);
-        Serial.println(jsonString5);
-        TotalHours_Characteristic->setValue(jsonString5.c_str());
-        TotalHours_Characteristic->notify();
+    RPM_Characteristic->setValue(jsonDoc5.as<String>().c_str());
+    RPM_Characteristic->notify();
 
-        String jsonString6;
-        serializeJson(jsonDoc6, jsonString6);
-        Serial.println(jsonString6);
-        CoolantTemp_Characteristic->setValue(jsonString6.c_str());
-        CoolantTemp_Characteristic->notify();
+    BrakePP_Characteristic->setValue(jsonDoc6.as<String>().c_str());
+    BrakePP_Characteristic->notify();
 
-        String jsonString7;
-        serializeJson(jsonDoc7, jsonString7);
-        Serial.println(jsonString7);
-        RPM_Characteristic->setValue(jsonString7.c_str());
-        RPM_Characteristic->notify();
+    AccPP_Characteristic->setValue(jsonDoc7.as<String>().c_str());
+    AccPP_Characteristic->notify();
 
+    CAN10_Characteristic->setValue(jsonDoc8.as<String>().c_str());
+    CAN10_Characteristic->notify();
 
-        String jsonString8;
-        serializeJson(jsonDoc8, jsonString8);
-        Serial.println(jsonString8);
-        BrakePP_Characteristic->setValue(jsonString8.c_str());
-        BrakePP_Characteristic->notify();
+    VAL_1->setValue(jsonDoc9.as<String>().c_str());
+    VAL_1->notify();
 
-        String jsonString9;
-        serializeJson(jsonDoc9, jsonString9);
-        Serial.println(jsonString9);
-        AccPP_Characteristic->setValue(jsonString9.c_str());
-        AccPP_Characteristic->notify();
-
-        String jsonString10;
-        serializeJson(jsonDoc10, jsonString10);
-        Serial.println(jsonString10);
-        CAN10_Characteristic->setValue(jsonString10.c_str());
-        CAN10_Characteristic->notify();
-
-
-
+    VAL_2->setValue(jsonDoc10.as<String>().c_str());
+    VAL_2->notify();
 
     
+    VAL_3->setValue(jsonDoc11.as<String>().c_str());
+    VAL_3->notify();
+
+    VAL_4->setValue(jsonDoc12.as<String>().c_str());
+    VAL_4->notify();
+
+    VAL_5->setValue(jsonDoc13.as<String>().c_str());
+    VAL_5->notify();
+
+    VAL_6->setValue(jsonDoc14.as<String>().c_str());
+    VAL_6->notify();
+
+    VAL_7->setValue(jsonDoc15.as<String>().c_str());
+    VAL_7->notify();
+
+    VAL_8->setValue(jsonDoc16.as<String>().c_str());
+    VAL_8->notify();
+
+    VAL_9->setValue(jsonDoc17.as<String>().c_str());
+    VAL_9->notify();
+
+    VAL_10->setValue(jsonDoc18.as<String>().c_str());
+    VAL_10->notify();
+
+    VAL_11->setValue(jsonDoc19.as<String>().c_str());
+    VAL_11->notify();
+
+    VAL_12->setValue(jsonDoc20.as<String>().c_str());
+    VAL_12->notify();
+
+
+
     delay(3000);
   }
 }
-
-
-
-
-
-// #include "esp_camera.h"
-// #include <WiFi.h>
-// #include "esp_timer.h"
-// #include "img_converters.h"
-// #include "Arduino.h"
-// #include "fb_gfx.h"
-// #include "soc/soc.h" //disable brownout problems
-// #include "soc/rtc_cntl_reg.h"  //disable brownout problems
-// #include "esp_http_server.h"
-
-// //Replace with your network credentials
-// const char* ssid = "HUAWEI-8e4e";
-// const char* password = "ifran123";
-// #define LED_PIN 4 
-// #define PART_BOUNDARY "123456789000000000000987654321"
-
-// // This project was tested with the AI Thinker Model, M5STACK PSRAM Model and M5STACK WITHOUT PSRAM
-// #define CAMERA_MODEL_AI_THINKER
-// //#define CAMERA_MODEL_M5STACK_PSRAM
-// //#define CAMERA_MODEL_M5STACK_WITHOUT_PSRAM
-
-// // Not tested with this model
-// //#define CAMERA_MODEL_WROVER_KIT
-
-// #if defined(CAMERA_MODEL_WROVER_KIT)
-//   #define PWDN_GPIO_NUM    -1
-//   #define RESET_GPIO_NUM   -1
-//   #define XCLK_GPIO_NUM    21
-//   #define SIOD_GPIO_NUM    26
-//   #define SIOC_GPIO_NUM    27
-  
-//   #define Y9_GPIO_NUM      35
-//   #define Y8_GPIO_NUM      34
-//   #define Y7_GPIO_NUM      39
-//   #define Y6_GPIO_NUM      36
-//   #define Y5_GPIO_NUM      19
-//   #define Y4_GPIO_NUM      18
-//   #define Y3_GPIO_NUM       5
-//   #define Y2_GPIO_NUM       4
-//   #define VSYNC_GPIO_NUM   25
-//   #define HREF_GPIO_NUM    23
-//   #define PCLK_GPIO_NUM    22
-
-// #elif defined(CAMERA_MODEL_M5STACK_PSRAM)
-//   #define PWDN_GPIO_NUM     -1
-//   #define RESET_GPIO_NUM    15
-//   #define XCLK_GPIO_NUM     27
-//   #define SIOD_GPIO_NUM     25
-//   #define SIOC_GPIO_NUM     23
-  
-//   #define Y9_GPIO_NUM       19
-//   #define Y8_GPIO_NUM       36
-//   #define Y7_GPIO_NUM       18
-//   #define Y6_GPIO_NUM       39
-//   #define Y5_GPIO_NUM        5
-//   #define Y4_GPIO_NUM       34
-//   #define Y3_GPIO_NUM       35
-//   #define Y2_GPIO_NUM       32
-//   #define VSYNC_GPIO_NUM    22
-//   #define HREF_GPIO_NUM     26
-//   #define PCLK_GPIO_NUM     21
-
-// #elif defined(CAMERA_MODEL_M5STACK_WITHOUT_PSRAM)
-//   #define PWDN_GPIO_NUM     -1
-//   #define RESET_GPIO_NUM    15
-//   #define XCLK_GPIO_NUM     27
-//   #define SIOD_GPIO_NUM     25
-//   #define SIOC_GPIO_NUM     23
-  
-//   #define Y9_GPIO_NUM       19
-//   #define Y8_GPIO_NUM       36
-//   #define Y7_GPIO_NUM       18
-//   #define Y6_GPIO_NUM       39
-//   #define Y5_GPIO_NUM        5
-//   #define Y4_GPIO_NUM       34
-//   #define Y3_GPIO_NUM       35
-//   #define Y2_GPIO_NUM       17
-//   #define VSYNC_GPIO_NUM    22
-//   #define HREF_GPIO_NUM     26
-//   #define PCLK_GPIO_NUM     21
-
-// #elif defined(CAMERA_MODEL_AI_THINKER)
-//   #define PWDN_GPIO_NUM     32
-//   #define RESET_GPIO_NUM    -1
-//   #define XCLK_GPIO_NUM      0
-//   #define SIOD_GPIO_NUM     26
-//   #define SIOC_GPIO_NUM     27
-  
-//   #define Y9_GPIO_NUM       35
-//   #define Y8_GPIO_NUM       34
-//   #define Y7_GPIO_NUM       39
-//   #define Y6_GPIO_NUM       36
-//   #define Y5_GPIO_NUM       21
-//   #define Y4_GPIO_NUM       19
-//   #define Y3_GPIO_NUM       18
-//   #define Y2_GPIO_NUM        5
-//   #define VSYNC_GPIO_NUM    25
-//   #define HREF_GPIO_NUM     23
-//   #define PCLK_GPIO_NUM     22
-// #else
-//   #error "Camera model not selected"
-// #endif
-
-// static const char* _STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
-// static const char* _STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-// static const char* _STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n";
-
-// httpd_handle_t stream_httpd = NULL;
-
-// static esp_err_t stream_handler(httpd_req_t *req){
-//   camera_fb_t * fb = NULL;
-//   esp_err_t res = ESP_OK;
-//   size_t _jpg_buf_len = 0;
-//   uint8_t * _jpg_buf = NULL;
-//   char * part_buf[64];
-
-//   res = httpd_resp_set_type(req, _STREAM_CONTENT_TYPE);
-//   if(res != ESP_OK){
-//     return res;
-//   }
-
-//   while(true){
-//     fb = esp_camera_fb_get();
-//     if (!fb) {
-//       Serial.println("Camera capture failed");
-//       res = ESP_FAIL;
-//     } else {
-//       if(fb->width > 400){
-//         if(fb->format != PIXFORMAT_JPEG){
-//           bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
-//           esp_camera_fb_return(fb);
-//           fb = NULL;
-//           if(!jpeg_converted){
-//             Serial.println("JPEG compression failed");
-//             res = ESP_FAIL;
-//           }
-//         } else {
-//           _jpg_buf_len = fb->len;
-//           _jpg_buf = fb->buf;
-//         }
-//       }
-//     }
-//     if(res == ESP_OK){
-//       size_t hlen = snprintf((char *)part_buf, 64, _STREAM_PART, _jpg_buf_len);
-//       res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
-//     }
-//     if(res == ESP_OK){
-//       res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
-//     }
-//     if(res == ESP_OK){
-//       res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
-//     }
-//     if(fb){
-//       esp_camera_fb_return(fb);
-//       fb = NULL;
-//       _jpg_buf = NULL;
-//     } else if(_jpg_buf){
-//       free(_jpg_buf);
-//       _jpg_buf = NULL;
-//     }
-//     if(res != ESP_OK){
-//       break;
-//     }
-//     //Serial.printf("MJPG: %uB\n",(uint32_t)(_jpg_buf_len));
-//   }
-//   return res;
-// }
-
-// void startCameraServer(){
-//   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-//   config.server_port = 80;
-
-//   httpd_uri_t index_uri = {
-//     .uri       = "/",
-//     .method    = HTTP_GET,
-//     .handler   = stream_handler,
-//     .user_ctx  = NULL
-//   };
-  
-//   //Serial.printf("Starting web server on port: '%d'\n", config.server_port);
-//   if (httpd_start(&stream_httpd, &config) == ESP_OK) {
-//      digitalWrite(LED_PIN, LOW);
-//     httpd_register_uri_handler(stream_httpd, &index_uri);
-//   }
-// }
-
-// void setup() {
-
-//   pinMode(LED_PIN, OUTPUT);
-//   digitalWrite(LED_PIN, LOW);
-
-
-//   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
- 
-//   Serial.begin(115200);
-//   Serial.setDebugOutput(false);
-  
-//   camera_config_t config;
-//   config.ledc_channel = LEDC_CHANNEL_0;
-//   config.ledc_timer = LEDC_TIMER_0;
-//   config.pin_d0 = Y2_GPIO_NUM;
-//   config.pin_d1 = Y3_GPIO_NUM;
-//   config.pin_d2 = Y4_GPIO_NUM;
-//   config.pin_d3 = Y5_GPIO_NUM;
-//   config.pin_d4 = Y6_GPIO_NUM;
-//   config.pin_d5 = Y7_GPIO_NUM;
-//   config.pin_d6 = Y8_GPIO_NUM;
-//   config.pin_d7 = Y9_GPIO_NUM;
-//   config.pin_xclk = XCLK_GPIO_NUM;
-//   config.pin_pclk = PCLK_GPIO_NUM;
-//   config.pin_vsync = VSYNC_GPIO_NUM;
-//   config.pin_href = HREF_GPIO_NUM;
-//   config.pin_sscb_sda = SIOD_GPIO_NUM;
-//   config.pin_sscb_scl = SIOC_GPIO_NUM;
-//   config.pin_pwdn = PWDN_GPIO_NUM;
-//   config.pin_reset = RESET_GPIO_NUM;
-//   config.xclk_freq_hz = 20000000;
-//   config.pixel_format = PIXFORMAT_JPEG; 
-  
-//   if(psramFound()){
-//     config.frame_size = FRAMESIZE_UXGA;
-//     config.jpeg_quality = 10;
-//     config.fb_count = 2;
-//   } else {
-//     config.frame_size = FRAMESIZE_SVGA;
-//     config.jpeg_quality = 12;
-//     config.fb_count = 1;
-//   }
-  
-//   // Camera init
-//   esp_err_t err = esp_camera_init(&config);
-//   if (err != ESP_OK) {
-//     Serial.printf("Camera init failed with error 0x%x", err);
-//     return;
-//   }
-//   // Wi-Fi connection
-//   WiFi.begin(ssid, password);
-//   while (WiFi.status() != WL_CONNECTED) {
-//     delay(500);
-//     Serial.print(".");
-//   }
-//   Serial.println("");
-//   Serial.println("WiFi connected");
-  
-//   Serial.print("Camera Stream Ready! Go to: http://");
-//   Serial.print(WiFi.localIP());
-  
-//   // Start streaming web server
-//   startCameraServer();
-// }
-
-// void loop() {
-//   delay(1);
-// }
